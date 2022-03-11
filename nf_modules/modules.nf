@@ -47,7 +47,7 @@ process generating_map {
 publishDir "${results_dir}/hapbin_genetic_map/", mode:"copy"
 
 	input:
-	tuple val(chromosome), path(path_vcf), path(path_hap), path(path_legend), path(path_sample), path(path_genetic_map), path(path_strand_exclude)
+	tuple val(chromosome), path(path_legend), path(path_sample), path(path_genetic_map)
 
 	output:
 	tuple val(chromosome), path("chr${chromosome}.map")
@@ -63,12 +63,13 @@ publishDir "${results_dir}/ihs_results/", mode:"copy"
 
 	input:
 	tuple val(chromosome), path(path_hap), path(path_map)
+	val maff
 
 	output:
 	tuple val(chromosome), path("chr${chromosome}.ihs_file")
 
 	"""
-	ihsbin --hap ${path_hap} --map ${path_map} --minmaf 0.01 --out chr${chromosome}.ihs_file
+	ihsbin --hap ${path_hap} --map ${path_map} --minmaf ${maff} --out chr${chromosome}.ihs_file
 	"""
 }
 
@@ -94,11 +95,12 @@ publishDir "${results_dir}/all_chr_ihs/", mode:"copy"
 	input:
 	path(path_files)
 	file rscript
+	val cutoff
 
 	output:
 	path("final_ihs.*")
 
 	"""
-	Rscript --vanilla ihs_treatment.R . final_ihs.tsv 2 final_ihs.png
+	Rscript --vanilla ihs_treatment.R . final_ihs.tsv ${cutoff} final_ihs.png
 	"""
 }

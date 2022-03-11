@@ -194,6 +194,8 @@ log.info "\n\n--Pipeline Parameters--"
 def pipelinesummary = [:]
 /* log parameter values beign used into summary */
 pipelinesummary['iHS: not phased']			= params.notphased
+pipelinesummary['iHS: cutoff']			= params.cutoff
+pipelinesummary['iHS: cutoff']			= params.maff
 pipelinesummary['Input data']			= params.input
 pipelinesummary['Results Dir']		= results_dir
 pipelinesummary['Intermediate Dir']		= intermediates_dir
@@ -212,18 +214,34 @@ nextflow.enable.dsl=2
 */
 
 /* Load files  into channel */
+/* Load files  for not phased vcfs*/
 Channel
     .fromPath(params.input)
     .splitCsv(header:true)
 		.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
     .set{ samples_ihs}
 
+/* Load files for genetic map generation */
 Channel
 		.fromPath(params.input)
 		.splitCsv(header:true)
-		.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
+		.map{ row -> [ row.chromosome, file(row.path_legend), file(row.path_sample), file(row.path_genetic_map)] }
 		.set{ samples_genetic_map}
 
+/* Load files for phased vcfs*/
+Channel
+		.fromPath(params.input)
+		.splitCsv(header:true)
+		.map{ row -> [ row.chromosome, file(row.path_vcf)] }
+		.set{ samples_phased}
+
+/* Load cutoff value if applied */
+if (params.maff) maff = Channel.value(params.maff)
+
+/* Load cutoff value if applied */
+if (params.cutoff) cutoff = Channel.value(params.cutoff)
+
+/* Load rscript */
 r_script = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
 
 /* Import modules
@@ -236,12 +254,24 @@ r_script = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
 */
 
  workflow  {
-	  p1 = phasing_with_ref(samples_ihs)
-		p2 = vcf_to_hap(p1)
-		p3 = generating_map(samples_genetic_map)
-		p4 = p2.combine(p3, by: 0)
-		p5 = ihs_computing(p4)
-		p6 = add_chromosome(p5)
-		p7 = p6.collect()
-		p8 = merging_chromosomes(p7, r_script)
+	 if (params.notphased) {
+		 p1 = phasing_with_ref(samples_ihs)
+	 } else {
+		 p1 = samples_phased
+	 }
+	 p2 = vcf_to_hap(p1)
+	 p3 = generating_map(samples_genetic_map)
+	 p4 = p2.combine(p3, by: 0)
+	 if (params.maff) {
+		 p5 = ihs_computing(p4, maff)
+	 } else {
+		 p5 = ihs_computing(p4, 0.01)
+	 }
+	 p6 = add_chromosome(p5)
+	 p7 = p6.collect()
+	 if (params.cutoff) {
+		 p8 = merging_chromosomes(p7, r_script, cutoff)
+	 } else {
+		 p8 = merging_chromosomes(p7, r_script, 2)
+	 }
  }
