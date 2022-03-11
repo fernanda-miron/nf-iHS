@@ -50,9 +50,9 @@ def helpMessage() {
 
 	Usage:
 
-	nextflow run ${pipeline_name}.nf --files_path <path with files> [--output_dir path to results ]
+	nextflow run ${pipeline_name}.nf --input <path to chr1 files> [--output_dir path to results ]
 
-	  --files_path	<- The path to the files required to calculate iHS
+	  --input	<- A design file with the path's required
 
 	  --output_dir  <- directory where results, intermediate and log files will bestored;
 	      default: same dir where vcf files are
@@ -86,7 +86,7 @@ pipeline_name = "nf_ihs_computing"
   Initiate default values for parameters
   to avoid "WARN: Access to undefined parameter" messages
 */
-params.files_path = false // default is false to not trigger help message
+params.input = false // default is false to not trigger help message
 params.help = false //default is false to not trigger help message automatically at every run
 params.version = false //default is false to not trigger version message automatically at every run
 
@@ -139,8 +139,8 @@ try {
     if it was not provided, it keeps the 'false' value assigned in the parameter initiation block above
     and this test fails
 */
-if ( !params.files_path ) {
-  log.error " Please provide the --files_path \n\n" +
+ if ( !params.input ) {
+  log.error " Please provide the --input \n\n" +
   " For more information, execute: nextflow run nf_ihs_computing --help"
   exit 1
 }
@@ -149,7 +149,7 @@ if ( !params.files_path ) {
 Output directory definition
 Default value to create directory is the parent dir of --input_dir
 */
-params.output_dir = file(params.files_path).getParent() //!! maybe creates bug, should check
+params.output_dir = file(params.input).getParent() //!! maybe creates bug, should check
 
 /*
   Results and Intermediate directory definition
@@ -194,7 +194,7 @@ log.info "\n\n--Pipeline Parameters--"
 def pipelinesummary = [:]
 /* log parameter values beign used into summary */
 pipelinesummary['iHS: not phased']			= params.notphased
-pipelinesummary['Input data']			= params.files_path
+pipelinesummary['Input data']			= params.input
 pipelinesummary['Results Dir']		= results_dir
 pipelinesummary['Intermediate Dir']		= intermediates_dir
 /* print stored summary info */
@@ -211,35 +211,37 @@ nextflow.enable.dsl=2
 	READ INPUTS
 */
 
-/* Load files  into channel*/
-vcf = Channel.fromPath("${params.files_path}/*.vcf")
-genetic_map_shapeit = Channel.fromPath("${params.files_path}/genetic_map*")
-reference_haplotypes = Channel.fromPath("${params.files_path}/*.hap")
-reference_legend = Channel.fromPath("${params.files_path}/*.legend")
-reference_sample = Channel.fromPath("${params.files_path}/*.sample")
-exclude_file = Channel.fromPath("${params.files_path}/*.exclude")
-python_script = Channel.fromPath("nf_modules/core-scripts/make_map.py")
+/* Load files  into channel */
+Channel
+    .fromPath(params.input)
+    .splitCsv(header:true)
+		.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
+    .set{ samples_ihs}
+
+Channel
+		.fromPath(params.input)
+		.splitCsv(header:true)
+		.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
+		.set{ samples_genetic_map}
+
 r_script = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
 
 /* Import modules
 */
- include {
-   vcf_phasing; haps_to_vcf;
-	 vcf_to_hap ; generating_map ;ihs_computing; ihs_treatment} from './nf_modules/modules.nf'
+ include {phasing_with_ref; vcf_to_hap; generating_map;
+	 ihs_computing; add_chromosome; merging_chromosomes} from './nf_modules/modules.nf'
 
- /*
-  * main pipeline logic
-  */
+/*
+* main pipeline logic
+*/
 
  workflow  {
-	 if (params.notphased){
-		 p1 = vcf_phasing(vcf, genetic_map_shapeit, reference_haplotypes, reference_legend, reference_sample, exclude_file)
-		 p2 = haps_to_vcf(p1.hap_file, p1.sample_file)
-	 } else {
-		p2 = vcf
-	 }
-	 p3 = vcf_to_hap(p2)
-	 p4 = generating_map(reference_haplotypes, reference_legend, genetic_map_shapeit, python_script)
-	 p5 = ihs_computing(p3, p4)
-	 p6 = ihs_treatment(p5, r_script)
+	  p1 = phasing_with_ref(samples_ihs)
+		p2 = vcf_to_hap(p1)
+		p3 = generating_map(samples_genetic_map)
+		p4 = p2.combine(p3, by: 0)
+		p5 = ihs_computing(p4)
+		p6 = add_chromosome(p5)
+		p7 = p6.collect()
+		p8 = merging_chromosomes(p7, r_script)
  }

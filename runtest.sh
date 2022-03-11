@@ -1,10 +1,10 @@
-files_path="test/data"
+input="test/data/design_file.csv"
 output_directory="test/results"
 
 echo -e "======\n Testing NF execution \n======" \
 && rm -rf $output_directory \
 && nextflow run ihs.nf \
-	--files_path $files_path \
+	--input $input \
 	--output_dir $output_directory \
 	-resume \
 	-with-report $output_directory/`date +%Y%m%d_%H%M%S`_report.html \

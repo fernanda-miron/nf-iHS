@@ -4,46 +4,26 @@
 results_dir = "./test/results"
 intermediates_dir = "./test/results/intermediates"
 
-process vcf_phasing {
+process phasing_with_ref {
 
-publishDir "${results_dir}/phased_vcf/", mode:"copy"
-
-	input:
-	file vcf
-	file genetic_map_shapeit
-	file reference_haplotypes
-	file reference_legend
-	file reference_sample
-	file exclude_file
-
-	output:
-	path "*.haps", emit: hap_file
-	path "*.sample", emit: sample_file
-
-	"""
-	shapeit --input-vcf ${vcf} \
-        -M ${genetic_map_shapeit} \
-        --input-ref ${reference_haplotypes} ${reference_legend} ${reference_sample} \
-				--exclude-snp ${exclude_file} \
-        -O phased.with.ref
-	"""
-}
-
-process haps_to_vcf {
-
-publishDir "${results_dir}/IMPUTE_format_file/", mode:"copy"
+publishDir "${results_dir}/phasing_with_ref", mode:"copy"
 
 	input:
-	file p1_haps
-	file p1_sample
+	tuple val(chromosome), path(path_vcf), path(path_hap), path(path_legend), path(path_sample), path(path_genetic_map), path(path_strand_exclude)
 
 	output:
-	path "*.vcf"
+	tuple val(chromosome), path("${chromosome}.phased.with.ref.vcf")
 
 	"""
+	shapeit --input-vcf ${path_vcf} \
+        -M ${path_genetic_map} \
+        --input-ref ${path_hap} ${path_legend} ${path_sample} \
+				--exclude-snp ${path_strand_exclude} \
+        -O ${chromosome}.phased.with.ref
+
 	shapeit -convert \
-        --input-haps phased.with.ref \
-        --output-vcf phased.with.ref.vcf
+	--input-haps ${chromosome}.phased.with.ref \
+			        --output-vcf ${chromosome}.phased.with.ref.vcf
 	"""
 }
 
@@ -52,13 +32,13 @@ process vcf_to_hap {
 publishDir "${results_dir}/IMPUTE_format_file/", mode:"copy"
 
 	input:
-	file p2
+	tuple val(chromosome), path(path_files)
 
 	output:
-	path "*.hap"
+	tuple val(chromosome), path("chr${chromosome}.*.hap")
 
 	"""
-	vcftools --vcf ${p2} --IMPUTE
+	vcftools --vcf ${path_files} --IMPUTE --out chr${chromosome}
 	"""
 }
 
@@ -67,17 +47,13 @@ process generating_map {
 publishDir "${results_dir}/hapbin_genetic_map/", mode:"copy"
 
 	input:
-	file reference_haplotypes
-	file reference_legend
-	file genetic_map
-	file python_script
+	tuple val(chromosome), path(path_vcf), path(path_hap), path(path_legend), path(path_sample), path(path_genetic_map), path(path_strand_exclude)
 
 	output:
-	file "*.map"
+	tuple val(chromosome), path("chr${chromosome}.map")
 
 	"""
-	chr=\$(ls ${reference_legend} | egrep -o [0-9]+ | tail -1)
-	./make_map.py --chromosome "\$chr"
+	make_map.py --chromosome ${chromosome}
 	"""
 }
 
@@ -86,29 +62,43 @@ process ihs_computing {
 publishDir "${results_dir}/ihs_results/", mode:"copy"
 
 	input:
-	file p3
-	file genetic_map
+	tuple val(chromosome), path(path_hap), path(path_map)
 
 	output:
-	file "ihs_file"
+	tuple val(chromosome), path("chr${chromosome}.ihs_file")
 
 	"""
-	ihsbin --hap ${p3} --map ${genetic_map} --minmaf 0.01 --out ihs_file
+	ihsbin --hap ${path_hap} --map ${path_map} --minmaf 0.01 --out chr${chromosome}.ihs_file
 	"""
 }
 
-process ihs_treatment {
+process add_chromosome {
 
-publishDir "${results_dir}/ihs_treated_results/", mode:"copy"
+publishDir "${results_dir}/ihs_results_chr/", mode:"copy"
 
 	input:
-	file p5
+	tuple val(chromosome), path(path_files)
+
+	output:
+	path("add.chr${chromosome}.ihs_file")
+
+	"""
+	awk '{print \$0, "\t${chromosome}"}' ${path_files} >  add.chr${chromosome}.ihs_file
+	"""
+}
+
+process merging_chromosomes {
+
+publishDir "${results_dir}/all_chr_ihs/", mode:"copy"
+
+	input:
+	path(path_files)
 	file rscript
 
 	output:
-	file "*.tsv"
+	path("final_ihs.*")
 
 	"""
-	Rscript --vanilla ihs_treatment.R ${p5} ihs_treated.tsv
+	Rscript --vanilla ihs_treatment.R . final_ihs.tsv 2 final_ihs.png
 	"""
 }
