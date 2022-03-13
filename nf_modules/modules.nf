@@ -104,3 +104,118 @@ publishDir "${results_dir}/all_chr_ihs/", mode:"copy"
 	Rscript --vanilla ihs_treatment.R . final_ihs.tsv ${cutoff} final_ihs.png
 	"""
 }
+
+process fst_calculation {
+
+publishDir "${results_dir}/fst_results_pop1_pop2/", mode:"copy"
+
+	input:
+	tuple path(path_vcf), path(path_pop1), path(path_pop2), path(path_popout)
+
+	output:
+	path "*.fst"
+
+	"""
+	vcftools --vcf ${path_vcf} \
+					 --weir-fst-pop ${path_pop1} \
+					 --weir-fst-pop ${path_pop2} \
+					 --out pop1pop2
+	"""
+}
+
+process fst_calculation_2 {
+
+publishDir "${results_dir}/fst_results_pop1_popout/", mode:"copy"
+
+	input:
+	tuple path(path_vcf), path(path_pop1), path(path_pop2), path(path_popout)
+
+	output:
+	path "*.fst"
+
+	"""
+	vcftools --vcf ${path_vcf} \
+					 --weir-fst-pop ${path_pop1} \
+					 --weir-fst-pop ${path_popout} \
+					 --out pop1popout
+	"""
+}
+
+process fst_calculation_3 {
+
+publishDir "${results_dir}/fst_results_pop2_popout/", mode:"copy"
+
+	input:
+	tuple path(path_vcf), path(path_pop1), path(path_pop2), path(path_popout)
+
+	output:
+	path "*.fst"
+
+	"""
+	vcftools --vcf ${path_vcf} \
+					 --weir-fst-pop ${path_pop2} \
+					 --weir-fst-pop ${path_popout} \
+					 --out pop2popout
+	"""
+}
+
+process af_1 {
+
+	publishDir "${results_dir}/af_pop1/",mode:"copy"
+
+	input:
+	tuple path(path_vcf), path(path_pop1), path(path_pop2), path(path_popout)
+
+	output:
+	file "*.frq"
+
+	"""
+	vcftools --vcf ${path_vcf} --keep ${path_pop1} --freq --out pop1
+	"""
+}
+
+process af_2 {
+
+	publishDir "${results_dir}/af_pop2/",mode:"copy"
+
+	input:
+	tuple path(path_vcf), path(path_pop1), path(path_pop2), path(path_popout)
+
+	output:
+	file "*.frq"
+
+	"""
+	vcftools --vcf ${path_vcf} --keep ${path_pop2} --freq --out pop2
+	"""
+}
+
+process af_3 {
+
+	publishDir "${results_dir}/af_pop3/",mode:"copy"
+
+	input:
+	tuple path(path_vcf), path(path_pop1), path(path_pop2), path(path_popout)
+
+	output:
+	file "*.frq"
+
+	"""
+	vcftools --vcf ${path_vcf} --keep ${path_popout} --freq --out pop3
+	"""
+}
+
+process pbs_by_snp {
+
+	publishDir "${results_dir}/pbs_by_snp/",mode:"copy"
+
+	input:
+	file p15
+	file r_script_pbs
+
+	output:
+	file "pbs*"
+
+	"""
+	Rscript --vanilla pbs_calculator.R . "pbs_by_snp.png" "pbs.tsv"
+	"""
+}

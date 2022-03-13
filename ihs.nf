@@ -50,9 +50,11 @@ def helpMessage() {
 
 	Usage:
 
-	nextflow run ${pipeline_name}.nf --input <path to chr1 files> [--output_dir path to results ]
+	nextflow run ${pipeline_name}.nf --input_ihs <path to ihs design file> --input_pbs <path to pbs design file> [--output_dir path to results ]
 
-	  --input	<- A design file with the path's required
+	  --input_ihs	<- A design file with the path's required for ihs
+
+		--input_pbs	<- A design file with the path's required for pbs
 
 	  --output_dir  <- directory where results, intermediate and log files will bestored;
 	      default: same dir where vcf files are
@@ -86,7 +88,8 @@ pipeline_name = "nf_ihs_computing"
   Initiate default values for parameters
   to avoid "WARN: Access to undefined parameter" messages
 */
-params.input = false // default is false to not trigger help message
+params.input_ihs = false // default is false to not trigger help message
+params.input_pbs = false // default is false to not trigger help message
 params.help = false //default is false to not trigger help message automatically at every run
 params.version = false //default is false to not trigger version message automatically at every run
 
@@ -139,8 +142,8 @@ try {
     if it was not provided, it keeps the 'false' value assigned in the parameter initiation block above
     and this test fails
 */
- if ( !params.input ) {
-  log.error " Please provide the --input \n\n" +
+ if ( !params.input_ihs | !params.input_pbs ) {
+  log.error " Please provide the --input_ihs AND --input_pbs \n\n" +
   " For more information, execute: nextflow run nf_ihs_computing --help"
   exit 1
 }
@@ -149,7 +152,7 @@ try {
 Output directory definition
 Default value to create directory is the parent dir of --input_dir
 */
-params.output_dir = file(params.input).getParent() //!! maybe creates bug, should check
+params.output_dir = file(params.input_ihs).getParent() //!! maybe creates bug, should check
 
 /*
   Results and Intermediate directory definition
@@ -196,7 +199,8 @@ def pipelinesummary = [:]
 pipelinesummary['iHS: not phased']			= params.notphased
 pipelinesummary['iHS: cutoff']			= params.cutoff
 pipelinesummary['iHS: cutoff']			= params.maff
-pipelinesummary['Input data']			= params.input
+pipelinesummary['Input data']			= params.input_ihs
+pipelinesummary['Input data']			= params.input_pbs
 pipelinesummary['Results Dir']		= results_dir
 pipelinesummary['Intermediate Dir']		= intermediates_dir
 /* print stored summary info */
@@ -214,40 +218,52 @@ nextflow.enable.dsl=2
 */
 
 /* Load files  into channel */
-/* Load files  for not phased vcfs*/
+/* Load files from iHS design file for not phased vcfs*/
 Channel
-    .fromPath(params.input)
+    .fromPath(params.input_ihs)
     .splitCsv(header:true)
 		.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
     .set{ samples_ihs}
 
-/* Load files for genetic map generation */
+/* Load files from iHS design file for genetic map generation */
 Channel
-		.fromPath(params.input)
+		.fromPath(params.input_ihs)
 		.splitCsv(header:true)
 		.map{ row -> [ row.chromosome, file(row.path_legend), file(row.path_sample), file(row.path_genetic_map)] }
 		.set{ samples_genetic_map}
 
-/* Load files for phased vcfs*/
+/* Load files from iHS design file for phased vcfs*/
 Channel
-		.fromPath(params.input)
+		.fromPath(params.input_ihs)
 		.splitCsv(header:true)
 		.map{ row -> [ row.chromosome, file(row.path_vcf)] }
 		.set{ samples_phased}
 
-/* Load cutoff value if applied */
+/* Load maff value for iHS if applied */
 if (params.maff) maff = Channel.value(params.maff)
 
-/* Load cutoff value if applied */
+/* Load cutoff value for iHS plotting if applied */
 if (params.cutoff) cutoff = Channel.value(params.cutoff)
 
-/* Load rscript */
-r_script = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
+/* Load rscript for iHS ihs_treatment */
+r_script_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
+
+/* Load files from PBS design file */
+Channel
+    .fromPath(params.input_pbs)
+    .splitCsv(header:true)
+		.map{ row -> [ file(row.path_vcf), file(row.path_pop1), file(row.path_pop2), file(row.path_popout)] }
+    .set{ samples_pbs}
+
+/* Load rscript for iHS ihs_treatment */
+r_script_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_calculator.R")
 
 /* Import modules
 */
  include {phasing_with_ref; vcf_to_hap; generating_map;
-	 ihs_computing; add_chromosome; merging_chromosomes} from './nf_modules/modules.nf'
+	 ihs_computing; add_chromosome; merging_chromosomes;
+	 fst_calculation; fst_calculation_2; fst_calculation_3;
+	 af_1; af_2; af_3; pbs_by_snp} from './nf_modules/modules.nf'
 
 /*
 * main pipeline logic
@@ -270,8 +286,16 @@ r_script = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
 	 p6 = add_chromosome(p5)
 	 p7 = p6.collect()
 	 if (params.cutoff) {
-		 p8 = merging_chromosomes(p7, r_script, cutoff)
+		 p8 = merging_chromosomes(p7, r_script_ihs, cutoff)
 	 } else {
-		 p8 = merging_chromosomes(p7, r_script, 2)
+		 p8 = merging_chromosomes(p7, r_script_ihs, 2)
 	 }
+	 p9 = fst_calculation(samples_pbs)
+	 p10 = fst_calculation_2(samples_pbs)
+	 p11 = fst_calculation_3(samples_pbs)
+	 p12 = af_1(samples_pbs)
+	 p13 = af_2(samples_pbs)
+	 p14 = af_3(samples_pbs)
+	 p15 = p9.mix(p10,p11,p12,p13,p14).toList()
+	 p16 = pbs_by_snp(p15, r_script_pbs)
  }
