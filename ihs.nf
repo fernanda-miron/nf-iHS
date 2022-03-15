@@ -198,7 +198,9 @@ def pipelinesummary = [:]
 /* log parameter values beign used into summary */
 pipelinesummary['iHS: not phased']			= params.notphased
 pipelinesummary['iHS: cutoff']			= params.cutoff
-pipelinesummary['iHS: cutoff']			= params.maff
+pipelinesummary['iHS: maff']			= params.maff
+pipelinesummary['PBS: mart_annotation']			= params.mart
+pipelinesummary['iHS: mart_annotation']			= params.imart
 pipelinesummary['Input data']			= params.input_ihs
 pipelinesummary['Input data']			= params.input_pbs
 pipelinesummary['Results Dir']		= results_dir
@@ -245,6 +247,12 @@ if (params.maff) maff = Channel.value(params.maff)
 /* Load cutoff value for iHS plotting if applied */
 if (params.cutoff) cutoff = Channel.value(params.cutoff)
 
+/* Load mart file for annotation if applied */
+if (params.mart) mart_file = Channel.fromPath(params.mart)
+
+/* Load mart file for annotation if applied */
+if (params.imart) imart_file = Channel.fromPath(params.imart)
+
 /* Load rscript for iHS ihs_treatment */
 r_script_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
 
@@ -255,15 +263,18 @@ Channel
 		.map{ row -> [ file(row.path_vcf), file(row.path_pop1), file(row.path_pop2), file(row.path_popout)] }
     .set{ samples_pbs}
 
-/* Load rscript for iHS ihs_treatment */
+/* Load rscript for PBS calculation and treatment */
 r_script_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_calculator.R")
+r_script_format_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_format.R")
+r_script_format_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_format.R")
 
 /* Import modules
 */
  include {phasing_with_ref; vcf_to_hap; generating_map;
 	 ihs_computing; add_chromosome; merging_chromosomes;
 	 fst_calculation; fst_calculation_2; fst_calculation_3;
-	 af_1; af_2; af_3; pbs_by_snp} from './nf_modules/modules.nf'
+	 af_1; af_2; af_3; pbs_by_snp; ggf_format; pbs_annotation;
+	 ihs_ggf_format; ihs_annotation} from './nf_modules/modules.nf'
 
 /*
 * main pipeline logic
@@ -290,6 +301,10 @@ r_script_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_calculator.R")
 	 } else {
 		 p8 = merging_chromosomes(p7, r_script_ihs, 2)
 	 }
+	 if (params.imart) {
+		 p8_a = ihs_ggf_format(p8.ihs_tsv, imart_file, r_script_format_ihs)
+		 p8_b = ihs_annotation(p8_a.ihs_gff, p8_a.biomart_gff)
+	 }
 	 p9 = fst_calculation(samples_pbs)
 	 p10 = fst_calculation_2(samples_pbs)
 	 p11 = fst_calculation_3(samples_pbs)
@@ -298,4 +313,8 @@ r_script_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_calculator.R")
 	 p14 = af_3(samples_pbs)
 	 p15 = p9.mix(p10,p11,p12,p13,p14).toList()
 	 p16 = pbs_by_snp(p15, r_script_pbs)
+	 if (params.mart){
+		 p17 = ggf_format(p16.png_tsv, mart_file, r_script_format_pbs)
+		 p18 = pbs_annotation(p17.pbs_gff, p17.biomart_gff)
+	 }
  }

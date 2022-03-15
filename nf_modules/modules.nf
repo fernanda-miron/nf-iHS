@@ -98,10 +98,47 @@ publishDir "${results_dir}/all_chr_ihs/", mode:"copy"
 	val cutoff
 
 	output:
-	path("final_ihs.*")
+	path "*.png", emit: ihs_plots
+	path "*.tsv", emit: ihs_tsv
 
 	"""
-	Rscript --vanilla ihs_treatment.R . final_ihs.tsv ${cutoff} final_ihs.png
+	Rscript --vanilla ihs_treatment.R . final_ihs.tsv ${cutoff} final_ihs.manhattan.png final_ihs.histogram.png
+	"""
+}
+
+process ihs_ggf_format {
+
+	publishDir "${results_dir}/ihs_as_ggf/",mode:"copy"
+
+	input:
+	file p8
+	file biomart
+	file r_script_format_ihs
+
+	output:
+	path "biomart.gff", emit: biomart_gff
+	path "ihs.gff", emit: ihs_gff
+
+	"""
+	Rscript --vanilla ihs_format.R ${p8} ${biomart}
+	"""
+}
+
+process ihs_annotation {
+
+	publishDir "${results_dir}/ihs_annotation/",mode:"copy"
+
+	input:
+	file p8_ihs
+	file p8_gff
+
+	output:
+	path "intersect_gff.tsv"
+
+	"""
+	bedtools intersect -a ${p8_ihs} -b ${p8_gff} -wa -wb  > temp_intersect_gff.tsv
+	cut -f1,4,9,18 temp_intersect_gff.tsv > temp.f1
+	echo -e "CHR\tPOS\tiHS_value\tGene" | cat - temp.f1 > intersect_gff.tsv
 	"""
 }
 
@@ -213,9 +250,46 @@ process pbs_by_snp {
 	file r_script_pbs
 
 	output:
-	file "pbs*"
+	path "*.png", emit: png_pbs
+	path "*.tsv*", emit: png_tsv
 
 	"""
 	Rscript --vanilla pbs_calculator.R . "pbs_by_snp.png" "pbs.tsv"
+	"""
+}
+
+process ggf_format {
+
+	publishDir "${results_dir}/pbs_as_ggf/",mode:"copy"
+
+	input:
+	file p16
+	file biomart
+	file r_script_format_pbs
+
+	output:
+	path "biomart.gff", emit: biomart_gff
+	path "pbs.gff", emit: pbs_gff
+
+	"""
+	Rscript --vanilla pbs_format.R ${p16} ${biomart}
+	"""
+}
+
+process pbs_annotation {
+
+	publishDir "${results_dir}/pbs_annotation/",mode:"copy"
+
+	input:
+	file p17_pbs
+	file p17_gff
+
+	output:
+	path "intersect_gff.tsv"
+
+	"""
+	bedtools intersect -a ${p17_pbs} -b ${p17_gff} -wa -wb  > temp_intersect_gff.tsv
+	cut -f1,4,9,18 temp_intersect_gff.tsv > temp.f1
+	echo -e "CHR\tPOS\tPBS_value\tGene" | cat - temp.f1 > intersect_gff.tsv
 	"""
 }

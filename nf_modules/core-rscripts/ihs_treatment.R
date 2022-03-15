@@ -16,13 +16,15 @@ args <- commandArgs(trailingOnly = T)
 #args[1] <- "."
 #args[2] <- "./final_ihs.tsv"
 #args[3] <- "2"
-#args[4] <- "./ihs_plots.png"
+#args[4] <- "./ihs_manhattan.png"
+#args[5] <- "./ihs_histogram.png"
 
 ## Place args into named object
 file_dir <- args[1]
 tsv_file <- args[2]
 ihs_cut <- args[3]
 png_file <- args[4]
+histogram_file <- args[5]
 
 ## Get all the ihs_file files in path
 temp = list.files(pattern="*.ihs_file")
@@ -149,9 +151,17 @@ man_seis.p <- man_cinco.p +
         axis.title.y = element_text(margin=margin(0,10,0,0), face = "bold", color = "grey20"),
         plot.title=element_text(size=15,face="bold", color = "grey20"))
 
+# Finally, Manhattan plot
+ggsave(filename = png_file, 
+       plot = man_seis.p, 
+       device = "png",
+       width = 15, height = 8, units = "in",
+       bg = "white",
+       dpi = 300)
+
 # Making bar plot
 p1 <- ggplot(data = final_ihs_vcf, mapping = aes(x = Std_iHS)) +
-  geom_histogram( fill="#EE964B") +
+  geom_histogram( color="#EE964B", fill="#EE964B", alpha=0.2) +
   scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
   scale_x_continuous(expand = c(0.02, 0)) +
@@ -164,13 +174,10 @@ p1 <- ggplot(data = final_ihs_vcf, mapping = aes(x = Std_iHS)) +
        y = "Number of SNPs",
        x = "|iHS|") 
 
-## Merging
-grid1 <- plot_grid(man_seis.p, p1, align = "h", labels = c('A', 'B'), nrow = 2)
-
-# Finally, saving plot
-ggsave(filename = png_file, 
-       plot = grid1, 
+# Finally, histogram plot
+ggsave(filename = histogram_file, 
+       plot = p1, 
        device = "png",
-       width = 15, height = 11, units = "in",
+       width = 8, height = 6, units = "in",
        bg = "white",
        dpi = 300)

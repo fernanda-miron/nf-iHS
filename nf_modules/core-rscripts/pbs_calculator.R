@@ -167,7 +167,7 @@ man_seis.p <- man_cinco.p +
 
 # Makin bar plot
 p1 <- ggplot(data = arreglado, mapping = aes(x = PBS_value)) +
-  geom_histogram( fill="#EE964B") +
+  geom_histogram(color="#EE964B", fill="#EE964B", alpha=0.2) +
   scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
                 labels = trans_format("log10", math_format(10^.x))) +
   scale_x_continuous(expand = c(0.02, 0)) +
