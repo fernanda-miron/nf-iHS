@@ -22,9 +22,11 @@ By default, the pipeline currently performs the following:
 3. Map file generation (`make_map.py`)
 4. iHS calculation (`hapbin`)
 5. iHS plotting (`ihs_treatment.R`)
-6. Fst calculation (`vcftools`)
-7. PBS calculation (`pbs_calculator.R`)
-8. PBS and iHS comparison (`R script - To do`)
+6. iHS annotation (`bedtools`)
+7. Fst calculation (`vcftools`)
+8. PBS calculation (`pbs_calculator.R`)
+9. PBS annotation (`bedtools`)
+10. PBS and iHS comparison (`R script - To do`)
 
 ### **Requirements**
 
