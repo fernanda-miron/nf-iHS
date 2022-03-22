@@ -293,3 +293,23 @@ process pbs_annotation {
 	echo -e "CHR\tPOS\tPBS_value\tGene" | cat - temp.f1 > intersect_gff.tsv
 	"""
 }
+
+process merged_results {
+
+	publishDir "${results_dir}/pbs_vs_ihs/",mode:"copy"
+
+	input:
+	file p16
+	file p8
+	val p_cut
+	val i_cut
+	file r_script_merged
+
+	output:
+	path "*.html", emit: html_file
+	path "*.tsv", emit: tsv_file
+
+	"""
+	Rscript --vanilla circus.R ${p16} ${p8} ${p_cut} ${i_cut}
+	"""
+}

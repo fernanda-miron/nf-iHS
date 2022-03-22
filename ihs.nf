@@ -199,8 +199,11 @@ def pipelinesummary = [:]
 pipelinesummary['iHS: not phased']			= params.notphased
 pipelinesummary['iHS: cutoff']			= params.cutoff
 pipelinesummary['iHS: maff']			= params.maff
+pipelinesummary['iHS: genetic map']			= params.genetic_map
 pipelinesummary['PBS: mart_annotation']			= params.mart
 pipelinesummary['iHS: mart_annotation']			= params.imart
+pipelinesummary['iHS: merge value']			= params.imerged
+pipelinesummary['PBS: merge value']			= params.pmerged
 pipelinesummary['Input data']			= params.input_ihs
 pipelinesummary['Input data']			= params.input_pbs
 pipelinesummary['Results Dir']		= results_dir
@@ -221,25 +224,39 @@ nextflow.enable.dsl=2
 
 /* Load files  into channel */
 /* Load files from iHS design file for not phased vcfs*/
-Channel
-    .fromPath(params.input_ihs)
-    .splitCsv(header:true)
-		.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
-    .set{ samples_ihs}
+if (params.notphased) {
+	Channel
+	    .fromPath(params.input_ihs)
+	    .splitCsv(header:true)
+			.map{ row -> [ row.chromosome, file(row.path_vcf), file(row.path_hap), file(row.path_legend), file(row.path_sample), file(row.path_genetic_map), file(row.path_strand_exclude)] }
+	    .set{ samples_ihs}
+}
 
 /* Load files from iHS design file for genetic map generation */
-Channel
-		.fromPath(params.input_ihs)
-		.splitCsv(header:true)
-		.map{ row -> [ row.chromosome, file(row.path_legend), file(row.path_sample), file(row.path_genetic_map)] }
-		.set{ samples_genetic_map}
+if (!params.genetic_map) {
+	Channel
+			.fromPath(params.input_ihs)
+			.splitCsv(header:true)
+			.map{ row -> [ row.chromosome, file(row.path_legend), file(row.path_sample), file(row.path_genetic_map)] }
+			.set{ samples_genetic_map}
+}
 
 /* Load files from iHS design file for phased vcfs*/
+if (!params.notphased)
 Channel
 		.fromPath(params.input_ihs)
 		.splitCsv(header:true)
 		.map{ row -> [ row.chromosome, file(row.path_vcf)] }
 		.set{ samples_phased}
+
+/* Load files from iHS design file for phased vcfs*/
+if (params.genetic_map) {
+	Channel
+			 .fromPath(params.input_ihs)
+			 .splitCsv(header:true)
+			 .map{ row -> [ row.chromosome, file(row.path_genetic_map)] }
+			 .set{ samples_with_map}
+}
 
 /* Load maff value for iHS if applied */
 if (params.maff) maff = Channel.value(params.maff)
@@ -252,6 +269,12 @@ if (params.mart) mart_file = Channel.fromPath(params.mart)
 
 /* Load mart file for annotation if applied */
 if (params.imart) imart_file = Channel.fromPath(params.imart)
+
+/* Load mart file for annotation if applied */
+if (params.imerged) imerged = Channel.value(params.imerged)
+
+/* Load mart file for annotation if applied */
+if (params.pmerged) pmerged = Channel.value(params.pmerged)
 
 /* Load rscript for iHS ihs_treatment */
 r_script_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_treatment.R")
@@ -267,6 +290,7 @@ Channel
 r_script_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_calculator.R")
 r_script_format_pbs = Channel.fromPath("nf_modules/core-rscripts/pbs_format.R")
 r_script_format_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_format.R")
+r_script_merge = Channel.fromPath("nf_modules/core-rscripts/circus.R")
 
 /* Import modules
 */
@@ -274,7 +298,7 @@ r_script_format_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_format.R")
 	 ihs_computing; add_chromosome; merging_chromosomes;
 	 fst_calculation; fst_calculation_2; fst_calculation_3;
 	 af_1; af_2; af_3; pbs_by_snp; ggf_format; pbs_annotation;
-	 ihs_ggf_format; ihs_annotation} from './nf_modules/modules.nf'
+	 ihs_ggf_format; ihs_annotation; merged_results} from './nf_modules/modules.nf'
 
 /*
 * main pipeline logic
@@ -287,7 +311,11 @@ r_script_format_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_format.R")
 		 p1 = samples_phased
 	 }
 	 p2 = vcf_to_hap(p1)
-	 p3 = generating_map(samples_genetic_map)
+	 if (params.genetic_map) {
+		 p3 = samples_with_map
+	 } else {
+		 p3 = generating_map(samples_genetic_map)
+	 }
 	 p4 = p2.combine(p3, by: 0)
 	 if (params.maff) {
 		 p5 = ihs_computing(p4, maff)
@@ -316,5 +344,10 @@ r_script_format_ihs = Channel.fromPath("nf_modules/core-rscripts/ihs_format.R")
 	 if (params.mart){
 		 p17 = ggf_format(p16.png_tsv, mart_file, r_script_format_pbs)
 		 p18 = pbs_annotation(p17.pbs_gff, p17.biomart_gff)
+	 }
+	 if (params.imerged && params.pmerged) {
+		 p19 = merged_results(p16.png_tsv, p8.ihs_tsv, pmerged, imerged ,r_script_merge)
+	 } else {
+		 p19 = merged_results(p16.png_tsv, p8.ihs_tsv, 0.2, 2, r_script_merge)
 	 }
  }
